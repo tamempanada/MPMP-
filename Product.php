@@ -300,3 +300,113 @@ function getWeeklyActivity($days = 7)
     }
     return $result;
 }
+
+function reportDateCondition($period)
+{
+    return $period === 'month'
+        ? "date(created_at) >= date('now', 'start of month')"
+        : "date(created_at) >= date('now', 'weekday 0', '-6 days')";
+}
+
+function getPeriodReport($period = 'week')
+{
+    $period = $period === 'month' ? 'month' : 'week';
+    $condition = reportDateCondition($period);
+    $row = db()->query("SELECT
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN amount ELSE 0 END), 0) AS sales,
+        COALESCE(SUM(CASE WHEN type = 'restock' THEN amount ELSE 0 END), 0) AS restock,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN qty ELSE 0 END), 0) AS units_sold,
+        COALESCE(SUM(CASE WHEN type = 'restock' THEN qty ELSE 0 END), 0) AS units_restocked,
+        SUM(CASE WHEN type = 'sale' THEN 1 ELSE 0 END) AS sale_count,
+        SUM(CASE WHEN type = 'restock' THEN 1 ELSE 0 END) AS restock_count
+        FROM transactions WHERE $condition")->fetch();
+    $row['sales'] = round((float)$row['sales'], 2);
+    $row['restock'] = round((float)$row['restock'], 2);
+    $row['net'] = round($row['sales'] - $row['restock'], 2);
+    $row['units_sold'] = (int)$row['units_sold'];
+    $row['units_restocked'] = (int)$row['units_restocked'];
+    $row['sale_count'] = (int)$row['sale_count'];
+    $row['restock_count'] = (int)$row['restock_count'];
+    return $row;
+}
+
+function getPeriodBreakdown($period = 'week')
+{
+    $period = $period === 'month' ? 'month' : 'week';
+    $condition = reportDateCondition($period);
+    if ($period === 'month') {
+        $bucket = "date(created_at, '-' || ((CAST(strftime('%w', created_at) AS INTEGER) + 6) % 7) || ' days')";
+    } else {
+        $bucket = 'date(created_at)';
+    }
+    $sql = "SELECT $bucket AS bucket,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN amount ELSE 0 END), 0) AS sales,
+        COALESCE(SUM(CASE WHEN type = 'restock' THEN amount ELSE 0 END), 0) AS restock,
+        COALESCE(SUM(CASE WHEN type = 'sale' THEN qty ELSE 0 END), 0) AS units_sold,
+        COALESCE(SUM(CASE WHEN type = 'restock' THEN qty ELSE 0 END), 0) AS units_restocked
+        FROM transactions WHERE $condition GROUP BY bucket ORDER BY bucket DESC";
+    $rows = db()->query($sql)->fetchAll();
+    foreach ($rows as &$row) {
+        $timestamp = strtotime($row['bucket']);
+        $row['label'] = $period === 'month'
+            ? date('M j', $timestamp)
+            : date('D, M j', $timestamp);
+        $row['sales'] = round((float)$row['sales'], 2);
+        $row['restock'] = round((float)$row['restock'], 2);
+        $row['net'] = round($row['sales'] - $row['restock'], 2);
+        $row['units_sold'] = (int)$row['units_sold'];
+        $row['units_restocked'] = (int)$row['units_restocked'];
+    }
+    unset($row);
+    return $rows;
+}
+
+function getProductPerformance($days = 30)
+{
+    $days = max(1, min(365, (int)$days));
+    $st = db()->prepare("SELECT p.id, p.name, p.label, p.quantity,
+        COALESCE(SUM(t.qty), 0) AS units_sold,
+        COALESCE(SUM(t.amount), 0) AS sales_amount
+        FROM products p LEFT JOIN transactions t ON t.product_id = p.id
+            AND t.type = 'sale' AND datetime(t.created_at) >= datetime('now', ?)
+        GROUP BY p.id ORDER BY units_sold DESC, p.name COLLATE NOCASE");
+    $st->execute(['-' . $days . ' days']);
+    $products = $st->fetchAll();
+    $selling = 0;
+    foreach ($products as $product) {
+        if ((int)$product['units_sold'] > 0) {
+            $selling++;
+        }
+    }
+    $highCount = $selling ? (int)ceil($selling / 3) : 0;
+    $rank = 0;
+    foreach ($products as &$product) {
+        $units = (int)$product['units_sold'];
+        if ($units === 0) {
+            $product['performance'] = 'low';
+        } else {
+            $rank++;
+            $product['performance'] = $rank <= $highCount ? 'high' : 'stable';
+        }
+        $product['units_sold'] = $units;
+        $product['sales_amount'] = round((float)$product['sales_amount'], 2);
+    }
+    unset($product);
+    return $products;
+}
+
+function getStorageAnalyzer()
+{
+    $row = db()->query("SELECT COUNT(*) AS products,
+        COALESCE(SUM(quantity), 0) AS units,
+        COALESCE(SUM(quantity * cost), 0) AS cost_value,
+        SUM(CASE WHEN quantity = 0 THEN 1 ELSE 0 END) AS out_of_stock,
+        SUM(CASE WHEN quantity BETWEEN 1 AND 5 THEN 1 ELSE 0 END) AS low_stock,
+        SUM(CASE WHEN quantity > 5 THEN 1 ELSE 0 END) AS available
+        FROM products")->fetch();
+    foreach (['products', 'units', 'out_of_stock', 'low_stock', 'available'] as $key) {
+        $row[$key] = (int)$row[$key];
+    }
+    $row['cost_value'] = round((float)$row['cost_value'], 2);
+    return $row;
+}
