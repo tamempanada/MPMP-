@@ -27,7 +27,7 @@ A small PHP and SQLite inventory and sales dashboard for Hellmerry's Vape Shop. 
    php -S localhost:8000
    ```
 
-3. Visit [http://localhost:8000/Index.php](http://localhost:8000/Index.php).
+3. Visit [https://mpmp.freehosting.dev/index.php](https://mpmp.freehosting.dev/index.php).
 
 On first load, the app creates `hellmerry.db` beside the PHP files and initializes its tables and indexes. The PHP process needs permission to write to that directory. Keep the database file with the app to retain inventory and transaction data.
 
