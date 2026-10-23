@@ -21,18 +21,9 @@ A small PHP and SQLite inventory and sales dashboard for Hellmerry's Vape Shop. 
 - PDO SQLite enabled in PHP.
 - A web server or PHP's built-in development server.
 
-## Run locally
 
-1. Place `Index.php` and `Product.php` in the same directory.
-2. Open a terminal in that directory and start PHP's development server:
+ Visit [https://mpmp.freehosting.dev/index.php](https://mpmp.freehosting.dev/index.php).
 
-   ```sh
-   php -S localhost:8000
-   ```
-
-3. Visit [https://mpmp.freehosting.dev/index.php](https://mpmp.freehosting.dev/index.php).
-
-On first load, the app creates `hellmerry.db` beside the PHP files and initializes its tables and indexes. The PHP process needs permission to write to that directory. Keep the database file with the app to retain inventory and transaction data.
 
 ## Financial definitions
 
